@@ -12,25 +12,21 @@ else:
 
 def init_cam(device_id,width,height):
     cam = cv2.VideoCapture(device_id)
-    cam.set(cv2.cv.CV_CAP_PROP_FRAME_WIDTH, width)
-    cam.set(cv2.cv.CV_CAP_PROP_FRAME_HEIGHT, height)
+    cam.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+    cam.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
     return cam
 
 #######
 # fps - the fps of the output movie (hz)
-#video_duration - the length of the output movie (sec)
-#event_duration - the duration of the event that you want to capture (sec)
+# timelapse_sleep - the amount of time between frames
 #cam_idx - the camera idx (if only one camera it should be  0)
 #height - the image height in pixels
 #width - the image width in pixels
 #######
-def start_timelapse(fps,video_time,event_duration,cam_idx,height,width,output_dir,quality) :
+def start_timelapse(fps,timelapse_sleep,cam_idx,height,width,output_dir,quality) :
 
     #initiate the camera 
     cam = init_cam(cam_idx,width,height)
-    #determain how much time to sleep between every 2 frames 
-    #according to the event-duration,fps and video-time
-    timelapse_sleep  = float(event_duration) /  float(fps * video_time) 
 
     #the frame idx, how much frames has been captured
     idx = 1
@@ -38,48 +34,33 @@ def start_timelapse(fps,video_time,event_duration,cam_idx,height,width,output_di
     #A timer for debug prints
     tic = time.time()
     
-    #the maximum frame-id that we should capture
-    max_frame_id = event_duration / timelapse_sleep
-    
     #the image name scheme
-    image_name_format = "%s/%c0%dd.jpg" % (output_dir,'%',len(str(max_frame_id)))
-    
-    key_pressed = None
-    while idx < max_frame_id:
-        
-        #capture a photo from the camera
-        ret, img_rgb = cam.read()
-        if ret:
-            #embed the frame idx in the naming scheme
-            img_name = image_name_format % idx
+    image_name_format = "%s/%d-%%d.jpg" % (output_dir, time.time())
+    print image_name_format
+    try:
+        while True:
             
-            #save the photo
-            cv2.imwrite(img_name,img_rgb,[int(cv2.IMWRITE_JPEG_QUALITY), quality])
-            
-    
-            #debug print to see some progress
-            if time.time() - tic > 5:
-                print 'created %d images out of %d' %(idx,max_frame_id)
-                tic = time.time()
-    
-                #sleep between 2 frames
-            time.sleep(timelapse_sleep)
+            #capture a photo from the camera
+            ret, img_rgb = cam.read()
+            if ret:
+                #embed the frame idx in the naming scheme
+                img_name = image_name_format % idx
                 
-            idx = idx + 1
-            if platform.system() == 'Windows':
-                if msvcrt.kbhit():
-                    key_pressed = msvcrt.getch().strip()
-                    print key_pressed
-            else:
-                i, o, e = select.select( [sys.stdin], [], [], 0.1 )
-
-                if (i):
-                  key_pressed =  sys.stdin.readline().strip()
-                  print key_pressed
-            #If pressed q then stop filming and start making the video
-            if key_pressed == 'q':
-                break
-
+                #save the photo
+                cv2.imwrite(img_name,img_rgb,[int(cv2.IMWRITE_JPEG_QUALITY), quality])
+                
+        
+                #debug print to see some progress
+                if time.time() - tic > 5:
+                    print 'created %d images' %(idx)
+                    tic = time.time()
+        
+                    #sleep between 2 frames
+                time.sleep(timelapse_sleep)
+                    
+                idx = idx + 1
+    except KeyboardInterrupt:
+        print "saving"
             
     #After finishing the capture loop we can start creating the timelapse
     os.system('ffmpeg -framerate %d -i %s -c:v libx264 -r 20 -pix_fmt yuv420p %s/%d.mp4' % (fps,image_name_format,output_dir,int(time.time())))
@@ -130,14 +111,11 @@ def main():
     parser.add_option("-f", "--fps",
                       default=30,
                       help="video output fps")
-    parser.add_option("-v", "--video-duration",
+    parser.add_option("-i", "--interval",
                       default=10,
-                      help="output video duration")
-    parser.add_option("-e", "--event-duration",
-                      default=120,
-                      help="event duration (how much time the event is going to take)")
+                      help="interval between frames")
     parser.add_option("-o", "--output-dir",
-                      default='./',
+                      default='.',
                       help="the folder it would create the images and the video")
     parser.add_option("-q", "--quality",
                       default=90,
@@ -150,7 +128,7 @@ def main():
         print "%s doesn't exist please choose another folder" % output_dir
         exit(0)
 
-    cam_idx = int(options.cam_idx)
+    cam_idx = options.cam_idx#int(options.cam_idx)
     height = int(options.height)
     width = int(options.width)
     
@@ -159,10 +137,9 @@ def main():
         
     elif bool(options.timelapse):
         fps = int(options.fps)
-        video_duration = int(options.video_duration)
-        event_duration = int(options.event_duration)
+        interval = float(options.interval)
         quality = int(options.quality)
-        start_timelapse(fps,video_duration,event_duration,cam_idx,height,width,output_dir,quality)
+        start_timelapse(fps,interval,cam_idx,height,width,output_dir,quality)
         
 if __name__ == "__main__":
     main()
